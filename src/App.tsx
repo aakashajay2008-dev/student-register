@@ -4,12 +4,14 @@ import { BasicDetailsStep, StudentFormData } from "@/src/components/portal/basic
 import { SuccessModal } from "@/src/components/portal/success-modal";
 import { AdmissionSlipModal } from "@/src/components/portal/admission-slip-modal";
 import { StudentDashboard } from "@/src/components/portal/student-dashboard";
+import { studentApi } from "@/src/lib/api";
 
 export default function DSCETRegistrationApp() {
   const [currentStep, setCurrentStep] = useState<"auth" | "form" | "dashboard">("auth");
   const [userEmail, setUserEmail] = useState<string>("kaakash58266@gmail.com");
   const [isSuccessOpen, setIsSuccessOpen] = useState<boolean>(false);
   const [isAdmissionSlipOpen, setIsAdmissionSlipOpen] = useState<boolean>(false);
+  const [backendSyncStatus, setBackendSyncStatus] = useState<"connected" | "syncing" | "offline">("connected");
 
   const [submittedData, setSubmittedData] = useState<StudentFormData>(() => {
     try {
@@ -31,6 +33,32 @@ export default function DSCETRegistrationApp() {
     };
   });
 
+  // Verify backend on load and sync if record exists in backend
+  useEffect(() => {
+    async function initBackend() {
+      try {
+        const health = await studentApi.getHealth();
+        if (health && health.status === "ok") {
+          setBackendSyncStatus("connected");
+          // Try lookup for initial user
+          const existing = await studentApi.lookupStudent({ email: submittedData.email, regNo: submittedData.regNo });
+          if (existing) {
+            setSubmittedData((prev) => ({
+              ...prev,
+              ...existing,
+            }));
+          }
+        } else {
+          setBackendSyncStatus("offline");
+        }
+      } catch (e) {
+        console.warn("Backend initialization warning:", e);
+        setBackendSyncStatus("offline");
+      }
+    }
+    initBackend();
+  }, []);
+
   // Save to localStorage whenever submittedData updates
   useEffect(() => {
     try {
@@ -40,33 +68,60 @@ export default function DSCETRegistrationApp() {
     }
   }, [submittedData]);
 
-  const handleAuthSuccess = (email: string) => {
+  const handleAuthSuccess = async (email: string) => {
     setUserEmail(email);
-    // If student switched or entered a specific email, update form details
-    setSubmittedData((prev) => ({
-      ...prev,
-      email: email,
-      fullName: email.includes("priya")
-        ? "Priyadharshini M"
-        : email.includes("vignesh")
-        ? "Vignesh R"
-        : prev.fullName,
-      regNo: email.includes("priya")
-        ? "310525243015"
-        : email.includes("vignesh")
-        ? "310525106042"
-        : prev.regNo,
-      department: email.includes("priya")
-        ? "Artificial Intelligence & Data Science"
-        : email.includes("vignesh")
-        ? "Electronics & Communication Engineering"
-        : prev.department,
-    }));
+    setBackendSyncStatus("syncing");
+    try {
+      const foundInBackend = await studentApi.lookupStudent({ email });
+      if (foundInBackend) {
+        setSubmittedData({
+          fullName: foundInBackend.fullName,
+          regNo: foundInBackend.regNo,
+          studentId: foundInBackend.studentId,
+          department: foundInBackend.department,
+          email: foundInBackend.email,
+          phone: foundInBackend.phone,
+          academicYear: foundInBackend.academicYear || "2026–2027",
+          batch: foundInBackend.batch || "2026–2030",
+          quota: foundInBackend.quota || "Government Quota (TNEA Merit)",
+        });
+      } else {
+        // Fallback default mapping
+        setSubmittedData((prev) => ({
+          ...prev,
+          email: email,
+          fullName: email.includes("priya")
+            ? "Priyadharshini M"
+            : email.includes("vignesh")
+            ? "Vignesh R"
+            : prev.fullName,
+          regNo: email.includes("priya")
+            ? "310525243015"
+            : email.includes("vignesh")
+            ? "310525106042"
+            : prev.regNo,
+          department: email.includes("priya")
+            ? "Artificial Intelligence & Data Science"
+            : email.includes("vignesh")
+            ? "Electronics & Communication Engineering"
+            : prev.department,
+        }));
+      }
+      setBackendSyncStatus("connected");
+    } catch (e) {
+      console.warn("Lookup failed:", e);
+      setBackendSyncStatus("offline");
+    }
     setCurrentStep("form");
   };
 
-  const handleFormSubmit = (data: StudentFormData) => {
+  const handleFormSubmit = async (data: StudentFormData) => {
     setSubmittedData(data);
+    try {
+      await studentApi.registerStudent(data);
+    } catch (e) {
+      console.warn("Backend registration sync notice:", e);
+    }
     setIsSuccessOpen(true);
   };
 

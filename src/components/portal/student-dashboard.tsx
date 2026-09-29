@@ -16,10 +16,12 @@ import {
   ChevronRight,
   CreditCard,
   Building,
-  Bell
+  Bell,
+  Database
 } from "lucide-react";
 import { DscetCrest } from "@/src/components/dscet-crest";
 import { StudentFormData } from "./basic-details-step";
+import { studentApi } from "@/src/lib/api";
 
 interface StudentDashboardProps {
   studentData: StudentFormData;
@@ -43,7 +45,9 @@ export function StudentDashboard({
   onOpenAdmissionSlip,
   onSignOut,
 }: StudentDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"courses" | "idcard" | "schedule">("courses");
+  const [activeTab, setActiveTab] = useState<"courses" | "idcard" | "schedule" | "database">("courses");
+  const [allStudents, setAllStudents] = useState<any[]>([]);
+  const [loadingBackend, setLoadingBackend] = useState(false);
   const [courses, setCourses] = useState<CourseItem[]>([
     {
       code: "MA3151",
@@ -115,10 +119,27 @@ export function StudentDashboard({
     .filter((c) => c.enrolled)
     .reduce((sum, c) => sum + c.credits, 0);
 
-  const toggleCourseEnrollment = (code: string) => {
-    setCourses((prev) =>
-      prev.map((c) => (c.code === code ? { ...c, enrolled: !c.enrolled } : c))
-    );
+  const toggleCourseEnrollment = async (code: string) => {
+    const updated = courses.map((c) => (c.code === code ? { ...c, enrolled: !c.enrolled } : c));
+    setCourses(updated);
+    const enrolledCodes = updated.filter(c => c.enrolled).map(c => c.code);
+    try {
+      await studentApi.updateCourses(studentData.regNo || studentData.email, enrolledCodes);
+    } catch (e) {
+      console.warn("Could not sync course changes to backend:", e);
+    }
+  };
+
+  const loadBackendStudents = async () => {
+    setLoadingBackend(true);
+    try {
+      const res = await studentApi.getAllStudents();
+      setAllStudents(res.students || []);
+    } catch (e) {
+      console.warn("Failed to load students list:", e);
+    } finally {
+      setLoadingBackend(false);
+    }
   };
 
   return (
@@ -248,6 +269,20 @@ export function StudentDashboard({
             }`}
           >
             Orientation & Class Schedule
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("database");
+              loadBackendStudents();
+            }}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+              activeTab === "database"
+                ? "bg-blue-700 text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span>Admissions Registry DB</span>
           </button>
         </div>
 
@@ -467,6 +502,93 @@ export function StudentDashboard({
                   </span>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 4: Backend Database Registry Viewer */}
+        {activeTab === "database" && (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <h2 className="text-lg font-bold text-slate-900">
+                    DSCET Backend Admissions Database
+                  </h2>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Live persistent storage on the Node/Express backend server (<code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-[11px]">/data/students.json</code>).
+                </p>
+              </div>
+
+              <button
+                onClick={loadBackendStudents}
+                disabled={loadingBackend}
+                className="px-3.5 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 font-semibold text-xs hover:bg-blue-100 transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+              >
+                {loadingBackend ? "Refreshing..." : "↻ Refresh Backend Data"}
+              </button>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-700 border-b border-slate-200 uppercase font-semibold text-[10px] tracking-wider">
+                  <tr>
+                    <th className="p-3.5">Student Name</th>
+                    <th className="p-3.5">Reg No</th>
+                    <th className="p-3.5">Student ID</th>
+                    <th className="p-3.5">Department</th>
+                    <th className="p-3.5">Email</th>
+                    <th className="p-3.5">Quota</th>
+                    <th className="p-3.5">Status</th>
+                    <th className="p-3.5">Updated</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {allStudents.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-6 text-center text-slate-400">
+                        {loadingBackend ? "Loading records from backend..." : "No records found in database."}
+                      </td>
+                    </tr>
+                  ) : (
+                    allStudents.map((st) => (
+                      <tr key={st.id || st.regNo} className="hover:bg-slate-50/80 transition">
+                        <td className="p-3.5 font-bold text-slate-900 flex items-center gap-2">
+                          <span className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px]">
+                            {st.fullName?.charAt(0)}
+                          </span>
+                          <span>{st.fullName}</span>
+                        </td>
+                        <td className="p-3.5 font-mono font-medium text-blue-900">{st.regNo}</td>
+                        <td className="p-3.5 font-mono text-slate-700">{st.studentId}</td>
+                        <td className="p-3.5 text-slate-700">{st.department}</td>
+                        <td className="p-3.5 font-mono text-slate-600">{st.email}</td>
+                        <td className="p-3.5 text-slate-600">{st.quota || "Govt (TNEA)"}</td>
+                        <td className="p-3.5">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-semibold">
+                            <span className="w-1 h-1 rounded-full bg-emerald-500" />
+                            {st.status || "Enrolled"}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-[10px] text-slate-400">
+                          {st.updatedAt ? new Date(st.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs flex items-center justify-between">
+              <span>
+                Total Verified Student Records in Backend Database: <strong className="text-slate-900">{allStudents.length}</strong>
+              </span>
+              <span className="text-[11px] text-slate-400 font-mono">
+                API: POST /api/students/register • GET /api/students
+              </span>
             </div>
           </div>
         )}

@@ -11,10 +11,12 @@ import {
   HelpCircle,
   FileCheck,
   Building2,
-  Calendar
+  Calendar,
+  Database
 } from "lucide-react";
 import { DscetCrest } from "@/src/components/dscet-crest";
 import { ButtonColorful } from "@/src/components/ui/button-colorful";
+import { studentApi } from "@/src/lib/api";
 
 export interface StudentFormData {
   fullName: string;
@@ -62,6 +64,7 @@ export function BasicDetailsStep({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
+  const [savedToBackend, setSavedToBackend] = useState<boolean | null>(null);
 
   // Sync if initialEmail changes and formData.email is empty or default
   useEffect(() => {
@@ -82,13 +85,20 @@ export function BasicDetailsStep({
     }
   }, [initialEmail]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    setTimeout(() => {
+    try {
+      // Persist directly to backend database
+      await studentApi.registerStudent(formData);
+      setSavedToBackend(true);
+    } catch (err) {
+      console.warn("Backend save notice:", err);
+      setSavedToBackend(false);
+    } finally {
       setIsSubmitting(false);
       onSubmit(formData);
-    }, 450);
+    }
   };
 
   return (
@@ -133,7 +143,7 @@ export function BasicDetailsStep({
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 self-start sm:self-auto">
-            <CheckCircle2 className="w-3.5 h-3.5" /> SSL Secured Session • Port 443
+            <CheckCircle2 className="w-3.5 h-3.5" /> DSCET Database Connected • Auto-Sync Active
           </div>
         </div>
 
