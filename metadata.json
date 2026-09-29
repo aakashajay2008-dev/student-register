@@ -1,0 +1,6 @@
+{
+  "name": "DSCET Student Registration Portal",
+  "description": "Official online admissions and student enrollment registration portal for DSCET College of Engineering & Technology.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
